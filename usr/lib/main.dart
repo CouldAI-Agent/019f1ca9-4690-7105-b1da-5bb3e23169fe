@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'dart:convert';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const MyApp());
@@ -10,58 +13,92 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => const MyHomePage(title: 'Flutter Demo Home Page'),
+        '/': (context) => const WebViewScreen(),
       },
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
+class WebViewScreen extends StatefulWidget {
+  const WebViewScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _WebViewScreenState extends State<WebViewScreen> {
+  late final WebViewController _controller;
+  bool _isLoading = true;
+  String _errorMessage = '';
 
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            setState(() {
+              _isLoading = false;
+            });
+          },
+          onWebResourceError: (WebResourceError error) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage = 'Failed to load page: ${error.description}';
+            });
+          },
+        ),
+      );
+    _loadHtmlFromAssets();
+  }
+
+  Future<void> _loadHtmlFromAssets() async {
+    try {
+      // Trying to load from assets first
+      final String fileText = await rootBundle.loadString('assets/index.html');
+      _controller.loadHtmlString(fileText);
+    } catch (e) {
+      try {
+        final String fileText = await rootBundle.loadString('web/index.html');
+        _controller.loadHtmlString(fileText);
+      } catch (e2) {
+        setState(() {
+           _isLoading = false;
+           _errorMessage = 'Could not find index.html file.';
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        title: const Text('Mon Application'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text('$_counter', style: Theme.of(context).textTheme.headlineMedium),
-          ],
-        ),
+      body: Stack(
+        children: [
+          if (_errorMessage.isEmpty) WebViewWidget(controller: _controller),
+          if (_isLoading)
+            const Center(
+              child: CircularProgressIndicator(),
+            ),
+          if (_errorMessage.isNotEmpty)
+            Center(
+              child: Text(_errorMessage),
+            ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), 
     );
   }
 }
